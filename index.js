@@ -28,8 +28,8 @@ function httpsPost(url, body) {
             let chunk = '';
             res.on('data', c => chunk += c);
             res.on('end', () => {
-                try { resolve(JSON.parse(chunk)); }
-                catch { reject(new Error('Invalid JSON: ' + chunk)); }
+                try { resolve({ status: res.statusCode, data: JSON.parse(chunk) }); }
+                catch { reject(new Error('Status ' + res.statusCode + ': ' + chunk)); }
             });
         });
         req.on('error', reject);
@@ -42,12 +42,11 @@ app.post('/api/chat', async (req, res) => {
     try {
         const { message } = req.body;
         if (!message || typeof message !== 'string' || message.trim().length === 0) {
-            return res.status(400).json({ reply: 'Hmm, sepertinya pesanmu kosong. Coba tulis sesuatu ya.' });
+            return res.status(400).json({ reply: 'Hmm, sepertinya pesanmu kosong.' });
         }
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey || apiKey === 'your_api_key_here') {
-            console.error('API KEY tidak valid:', apiKey);
-            return res.json({ reply: 'Veloura sedang tidak bisa merespon saat ini. Coba lagi nanti ya.' });
+            return res.json({ reply: 'API key belum diatur.' });
         }
         const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey;
         const result = await httpsPost(url, {
@@ -55,15 +54,37 @@ app.post('/api/chat', async (req, res) => {
             contents: [{ parts: [{ text: message }] }],
             generationConfig: { temperature: 0.8, maxOutputTokens: 300, topP: 0.9 }
         });
-        const reply = result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts[0].text;
-        if (!reply) {
+        if (result.status !== 200) {
             console.error('Gemini error:', JSON.stringify(result));
-            return res.json({ reply: 'Veloura sedang tidak bisa merespon...' });
+            return res.json({ reply: 'Gemini error: ' + JSON.stringify(result.data).slice(0, 200) });
+        }
+        const reply = result.data.candidates && result.data.candidates[0] && result.data.candidates[0].content && result.data.candidates[0].content.parts && result.data.candidates[0].content.parts[0].text;
+        if (!reply) {
+            console.error('Empty reply:', JSON.stringify(result.data));
+            return res.json({ reply: 'Gemini tidak mengembalikan jawaban.' });
         }
         res.json({ reply: reply.trim() });
     } catch (err) {
         console.error('ERROR:', err.message);
-        res.json({ reply: 'Veloura sedang tidak bisa merespon...' });
+        res.json({ reply: 'Error: ' + err.message });
+    }
+});
+
+// TEST ENDPOINT — buat debug
+app.get('/test', async (req, res) => {
+    try {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey || apiKey === 'your_api_key_here') {
+            return res.json({ error: 'API KEY tidak valid', key_preview: apiKey ? apiKey.slice(0, 8) + '...' : 'KOSONG' });
+        }
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey;
+        const result = await httpsPost(url, {
+            contents: [{ parts: [{ text: 'Halo' }] }],
+            generationConfig: { maxOutputTokens: 50 }
+        });
+        res.json({ api_key_ok: true, gemini_status: result.status, gemini_response: result.data });
+    } catch (err) {
+        res.json({ error: err.message });
     }
 });
 
