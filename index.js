@@ -105,4 +105,5 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('Veloura backend berjalan di port ' + PORT));
+// Hapus atau comment kode app.listen(...) jika ada, lalu ganti/tambahkan baris berikut:
+module.exports = app;
